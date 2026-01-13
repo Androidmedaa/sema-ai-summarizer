@@ -1,0 +1,116 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# package-lock.json - Genelde commit edilir, ama isterseniz ignore edebilirsiniz
+# yarn.lock
+# pnpm-lock.yaml
+
+# Environment Variables (ÇOK ÖNEMLİ - API Key'ler burada!)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+# .env.example dosyaları commit edilmeli (örnek dosyalar, gerçek değerler içermez)
+!.env.example
+
+# Build outputs
+dist/
+build/
+.vite/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Uploaded files and data (Kullanıcı yüklenen dosyalar)
+backend/data/
+backend/uploads/
+backend/audio/
+frontend/public/uploads/
+
+# Firebase & Google Cloud Credentials (ÇOK ÖNEMLİ!)
+**/firebase-adminsdk*.json
+**/serviceAccountKey.json
+**/*-firebase-adminsdk-*.json
+**/google-credentials.json
+**/GOOGLE_APPLICATION_CREDENTIALS.json
+**/*credentials*.json
+**/*service-account*.json
+**/*admin-sdk*.json
+
+# Keep important JSON config files
+!package.json
+!package-lock.json
+!tsconfig.json
+!tsconfig.*.json
+!vite.config.js
+!firebase.json
+!firestore.rules
+!firestore.indexes.json
+!.vscode/settings.json
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.temp/
+tmp/
+temp/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Misc
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Optional: Keep package.json but ignore lock files if you want
+# Uncomment if you want to ignore lock files
+# package-lock.json
+# yarn.lock

@@ -1,0 +1,25 @@
+{
+  "name": "sema",
+  "version": "1.0.0",
+  "description": "Intelligent document search system with AI-powered semantic search and summarization",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\"",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "install:all": "npm install && cd frontend && npm install && cd ../backend && npm install"
+  },
+  "keywords": [
+    "document",
+    "search",
+    "ai",
+    "semantic"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "firebase": "^12.7.0"
+  }
+}
