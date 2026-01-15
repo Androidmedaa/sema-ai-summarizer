@@ -16,6 +16,8 @@ import {
 } from '../services/aiService.js'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { TextToSpeechClient } from '@google-cloud/text-to-speech'
+import { geminiApiLimiter, uploadLimiter } from '../middleware/rateLimiter.js'
+import { fullyCleanPdfText } from '../utils/pdfCleaner.js'
 
 // Initialize Gemini AI for podcast scripts - Lazy initialization
 let genAI = null
@@ -210,7 +212,7 @@ const extractText = async (filePath, fileType) => {
       try {
         const dataBuffer = fs.readFileSync(filePath)
         const data = await pdfParse(dataBuffer)
-        const extractedText = data.text || ''
+        let extractedText = data.text || ''
         console.log(`✅ PDF text extracted: ${extractedText.length} characters`)
         
         // Eğer metin çıkarılamadıysa (sadece resim içeriyorsa), boş string döndür ama hata fırlatma
@@ -218,6 +220,10 @@ const extractText = async (filePath, fileType) => {
           console.warn('⚠️ PDF\'den metin çıkarılamadı (muhtemelen sadece resim içeriyor), dosya yine de kaydedilecek')
           return 'Bu PDF dosyası sadece resim içeriyor. Metin çıkarımı yapılamadı ancak dosya sisteme kaydedildi.'
         }
+        
+        // PDF metnini temizle (header, footer, query string vb.)
+        extractedText = fullyCleanPdfText(extractedText)
+        console.log(`🧹 PDF text cleaned: ${extractedText.length} characters (after cleaning)`)
         
         return extractedText
       } catch (pdfError) {
@@ -281,7 +287,7 @@ router.get('/', verifyToken, (req, res) => {
 })
 
 // Upload document - verifyToken önce çalışmalı ki req.userId set edilsin
-router.post('/upload', verifyToken, upload.single('file'), async (req, res) => {
+router.post('/upload', verifyToken, uploadLimiter, upload.single('file'), async (req, res) => {
   let uploadedFilePath = null
   
   try {
@@ -749,7 +755,7 @@ function generateThemeFromColor(color, rgb) {
 }
 
 // Get folder summary (klasör içeriği özeti)
-router.get('/folder/:folderId/summary', verifyToken, async (req, res) => {
+router.get('/folder/:folderId/summary', verifyToken, geminiApiLimiter, async (req, res) => {
   try {
     const { folderId } = req.params
     const { documents: providedDocuments } = req.query // Frontend'den gönderilen dokümanlar (opsiyonel)
@@ -764,6 +770,9 @@ router.get('/folder/:folderId/summary', verifyToken, async (req, res) => {
         console.warn('Provided documents parse error, using backend documents')
         const documents = readDocuments()
         folderDocuments = documents.filter(doc => {
+          // Çöp kutusundaki dokümanları hariç tut
+          if (doc.isDeleted === true) return false
+          
           if (folderId === 'root' || folderId === 'null' || !folderId) {
             return doc.userId === req.userId && (!doc.folderId || doc.folderId === null || doc.folderId === '')
           }
@@ -772,8 +781,11 @@ router.get('/folder/:folderId/summary', verifyToken, async (req, res) => {
       }
     } else {
       const documents = readDocuments()
-      // Klasördeki dokümanları filtrele (folderId null ise root klasör)
+      // Klasördeki dokümanları filtrele (folderId null ise root klasör) - çöp kutusundaki dokümanları hariç tut
       folderDocuments = documents.filter(doc => {
+        // Çöp kutusundaki dokümanları hariç tut
+        if (doc.isDeleted === true) return false
+        
         if (folderId === 'root' || folderId === 'null' || !folderId) {
           return doc.userId === req.userId && (!doc.folderId || doc.folderId === null || doc.folderId === '')
         }
@@ -782,9 +794,12 @@ router.get('/folder/:folderId/summary', verifyToken, async (req, res) => {
       })
     }
     
-    // Frontend'den gelen dokümanları da filtrele (folderId'ye göre)
+    // Frontend'den gelen dokümanları da filtrele (folderId'ye göre ve çöp kutusundaki dokümanları hariç tut)
     if (providedDocuments) {
       folderDocuments = folderDocuments.filter(doc => {
+        // Çöp kutusundaki dokümanları hariç tut
+        if (doc.isDeleted === true) return false
+        
         if (folderId === 'root' || folderId === 'null' || !folderId) {
           return !doc.folderId || doc.folderId === null || doc.folderId === ''
         }
@@ -856,7 +871,7 @@ Kısa özet:`
 })
 
 // Ask question
-router.post('/ask', verifyToken, async (req, res) => {
+router.post('/ask', verifyToken, geminiApiLimiter, async (req, res) => {
   try {
     const { question } = req.body
 
@@ -865,11 +880,20 @@ router.post('/ask', verifyToken, async (req, res) => {
     }
 
     const documents = readDocuments()
-    const userDocuments = documents.filter(doc => doc.userId === req.userId)
+    // Sadece aktif (silinmemiş) dokümanları kullan - çöp kutusundaki dokümanları hariç tut
+    const userDocuments = documents.filter(doc => 
+      doc.userId === req.userId && 
+      (!doc.isDeleted || doc.isDeleted === false) // Çöp kutusundaki dokümanları hariç tut
+    )
 
     if (userDocuments.length === 0) {
       return res.status(400).json({ message: 'Henüz doküman yüklenmedi' })
     }
+
+    console.log('📚 AI soru-cevap için kullanılan dokümanlar:', {
+      total: userDocuments.length,
+      filenames: userDocuments.map(d => d.filename)
+    })
 
     // Get answer using AI
     const answer = await askQuestion(userDocuments, question)
@@ -882,7 +906,7 @@ router.post('/ask', verifyToken, async (req, res) => {
 })
 
 // Ask question about specific document
-router.post('/:id/ask', verifyToken, async (req, res) => {
+router.post('/:id/ask', verifyToken, geminiApiLimiter, async (req, res) => {
   try {
     const { id } = req.params
     const { question } = req.body
@@ -892,10 +916,15 @@ router.post('/:id/ask', verifyToken, async (req, res) => {
     }
 
     const documents = readDocuments()
-    const document = documents.find(doc => doc.id === id && doc.userId === req.userId)
+    // Sadece aktif (silinmemiş) dokümanları kullan - çöp kutusundaki dokümanları hariç tut
+    const document = documents.find(doc => 
+      doc.id === id && 
+      doc.userId === req.userId && 
+      (!doc.isDeleted || doc.isDeleted === false) // Çöp kutusundaki dokümanları hariç tut
+    )
 
     if (!document) {
-      return res.status(404).json({ message: 'Doküman bulunamadı' })
+      return res.status(404).json({ message: 'Doküman bulunamadı veya çöp kutusunda' })
     }
 
     console.log('📋 Doküman soru sorma isteği:', {
@@ -936,7 +965,7 @@ router.post('/:id/ask', verifyToken, async (req, res) => {
 })
 
 // Generate summary with specific format
-router.post('/:id/summary', verifyToken, async (req, res) => {
+router.post('/:id/summary', verifyToken, geminiApiLimiter, async (req, res) => {
   try {
     const { id } = req.params
     const { format = 'short' } = req.body // 'short', 'detailed', 'podcast'
@@ -1224,16 +1253,40 @@ router.put('/:id/folder', verifyToken, async (req, res) => {
     const { id } = req.params
     const { folderId } = req.body
     const documents = readDocuments()
-    const document = documents.find(doc => doc.id === id && doc.userId === req.userId)
+    
+    // Hem id hem de _id ile kontrol et (frontend'den farklı formatlar gelebilir)
+    const document = documents.find(doc => 
+      (doc.id === id || doc._id === id) && doc.userId === req.userId
+    )
 
     if (!document) {
-      return res.status(404).json({ message: 'Doküman bulunamadı' })
+      console.error('❌ Doküman bulunamadı:', { 
+        requestedId: id, 
+        userId: req.userId,
+        totalDocs: documents.length,
+        userDocs: documents.filter(d => d.userId === req.userId).map(d => ({ 
+          id: d.id, 
+          _id: d._id, 
+          userId: d.userId,
+          filename: d.filename 
+        }))
+      })
+      return res.status(404).json({ 
+        message: 'Doküman bulunamadı',
+        requestedId: id,
+        userId: req.userId
+      })
     }
 
     // Update folderId
     document.folderId = folderId || null
     writeDocuments(documents)
 
+    console.log('✅ Doküman klasöre taşındı:', { 
+      docId: document.id, 
+      folderId: document.folderId,
+      filename: document.filename 
+    })
     res.json({ message: 'Doküman klasöre taşındı', folderId: document.folderId })
   } catch (error) {
     console.error('Update folder error:', error)
@@ -1278,20 +1331,66 @@ router.put('/:id/rename', verifyToken, async (req, res) => {
     const { id } = req.params
     const { filename } = req.body
     const documents = readDocuments()
-    const document = documents.find(doc => doc.id === id && doc.userId === req.userId)
+    
+    // Hem id hem de _id ile kontrol et (frontend'den farklı formatlar gelebilir)
+    const document = documents.find(doc => 
+      (doc.id === id || doc._id === id) && doc.userId === req.userId
+    )
 
     if (!document) {
-      return res.status(404).json({ message: 'Doküman bulunamadı' })
+      console.error('❌ Doküman bulunamadı:', { 
+        requestedId: id, 
+        userId: req.userId,
+        totalDocs: documents.length,
+        userDocs: documents.filter(d => d.userId === req.userId).map(d => ({ 
+          id: d.id, 
+          _id: d._id, 
+          userId: d.userId,
+          filename: d.filename 
+        }))
+      })
+      return res.status(404).json({ 
+        message: 'Doküman bulunamadı',
+        requestedId: id,
+        userId: req.userId
+      })
     }
 
     if (!filename || filename.trim().length === 0) {
       return res.status(400).json({ message: 'Dosya adı boş olamaz' })
     }
 
+    // Orijinal dosya adından uzantıyı al
+    const originalFilename = document.filename || ''
+    const lastDotIndex = originalFilename.lastIndexOf('.')
+    const extension = lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : ''
+    
+    // Yeni adı al ve uzantıyı koru
+    let finalName = filename.trim()
+    
+    // Eğer kullanıcı uzantı eklememişse, orijinal uzantıyı ekle
+    if (extension && !finalName.toLowerCase().endsWith(extension.toLowerCase())) {
+      finalName = finalName + extension
+    }
+    
+    // Uzantı hariç maksimum 20 karakter kontrolü
+    const nameWithoutExt = extension ? finalName.slice(0, -extension.length) : finalName
+    if (nameWithoutExt.length > 20) {
+      return res.status(400).json({ message: 'Dosya adı (uzantı hariç) maksimum 20 karakter olabilir' })
+    }
+    
+    if (nameWithoutExt.length === 0) {
+      return res.status(400).json({ message: 'Dosya adı boş olamaz' })
+    }
+
     // Update filename
-    document.filename = filename.trim()
+    document.filename = finalName
     writeDocuments(documents)
 
+    console.log('✅ Doküman adı güncellendi:', { 
+      docId: document.id, 
+      newFilename: document.filename 
+    })
     res.json({ message: 'Doküman adı başarıyla güncellendi', document })
   } catch (error) {
     console.error('Rename error:', error)
@@ -1436,7 +1535,7 @@ ${document.text.substring(0, 6000)}`
 })
 
 // Summarize text endpoint
-router.post('/summarize-text', verifyToken, async (req, res) => {
+router.post('/summarize-text', verifyToken, geminiApiLimiter, async (req, res) => {
   try {
     const { text, length = 50, language = 'Turkish' } = req.body
 
@@ -1447,9 +1546,8 @@ router.post('/summarize-text', verifyToken, async (req, res) => {
     const { generateSummary } = await import('../services/aiService.js')
     
     const textWordCount = text.split(/\s+/).length
-    const targetWordCount = Math.ceil((textWordCount * length) / 100)
     
-    const summaryData = await generateSummary(text)
+    const summaryData = await generateSummary(text, language)
     
     let summary = summaryData.detailedSummary || summaryData.shortSummary || ''
     
@@ -1457,11 +1555,9 @@ router.post('/summarize-text', verifyToken, async (req, res) => {
       summary = summaryData.shortSummary || summary
     }
     
-    const summaryWords = summary.split(/\s+/)
-    if (summaryWords.length > targetWordCount * 1.2) {
-      summary = summaryWords.slice(0, targetWordCount).join(' ') + '...'
-    }
-
+    // Özeti kesme - AI'ın ürettiği tam özeti döndür
+    // Kullanıcı slider ile uzunluk kontrolü yapabilir, ancak özet tam olmalı
+    
     res.json({
       summary: summary,
       originalLength: textWordCount,

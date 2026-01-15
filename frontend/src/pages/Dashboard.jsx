@@ -14,6 +14,35 @@ import {
 import './Dashboard.css'
 
 function Dashboard({ setIsAuthenticated }) {
+  // Markdown formatını HTML'e çevir (bold, italic, vb.)
+  const parseMarkdown = (text) => {
+    if (!text) return ''
+    // Önce HTML karakterlerini escape et (XSS koruması)
+    let escaped = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+    
+    // Markdown formatlarını HTML'e çevir (sıra önemli!)
+    let parsed = escaped
+      // Bold: **text** veya __text__ (önce bold, sonra italic)
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>') // **bold** -> <strong>bold</strong>
+      .replace(/__([^_]+)__/g, '<strong>$1</strong>') // __bold__ -> <strong>bold</strong>
+      // Italic: *text* veya _text_ (bold'dan sonra, tek * veya _)
+      .replace(/\*([^*\s][^*]*[^*\s])\*/g, '<em>$1</em>') // *italic* -> <em>italic</em>
+      .replace(/_([^_\s][^_]*[^_\s])_/g, '<em>$1</em>') // _italic_ -> <em>italic</em>
+      // Code: `code`
+      .replace(/`([^`]+)`/g, '<code>$1</code>') // `code` -> <code>code</code>
+      // Strikethrough: ~~text~~
+      .replace(/~~([^~]+)~~/g, '<del>$1</del>') // ~~strikethrough~~ -> <del>strikethrough</del>
+      // Link: [text](url)
+      .replace(/\[([^\]]+)\]\(([^\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>') // [link](url) -> <a>link</a>
+      // Satır sonlarını <br> ile değiştir
+      .replace(/\n/g, '<br>')
+    
+    return parsed
+  }
+
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -42,8 +71,6 @@ function Dashboard({ setIsAuthenticated }) {
   const [filterByType, setFilterByType] = useState('all') // 'all', 'pdf', 'txt'
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false)
   const [newFolderName, setNewFolderName] = useState('')
-  const [draggedDocId, setDraggedDocId] = useState(null)
-  const [dragOverFolderId, setDragOverFolderId] = useState(null)
   const [folderPath, setFolderPath] = useState([]) // Breadcrumb için klasör yolu
   const [contextMenu, setContextMenu] = useState({
     visible: false,
@@ -88,8 +115,12 @@ function Dashboard({ setIsAuthenticated }) {
   const [loadingFolderSummary, setLoadingFolderSummary] = useState(false) // Klasör özeti yükleniyor mu
   const [showFolderSummary, setShowFolderSummary] = useState(true) // Klasör özeti göster/gizle
   const [theme, setTheme] = useState(() => {
-    // localStorage'dan tema tercihini yükle
+    // localStorage'dan tema tercihini yükle, varsayılan: 'light' (Mavi tema)
     const savedTheme = localStorage.getItem('theme') || 'light'
+    // Eğer hiç tema seçilmemişse varsayılan olarak mavi (light) tema kullan
+    if (!localStorage.getItem('theme')) {
+      localStorage.setItem('theme', 'light')
+    }
     return savedTheme
   })
   const [customColor, setCustomColor] = useState(() => {
@@ -157,8 +188,11 @@ function Dashboard({ setIsAuthenticated }) {
     try {
       const folderId = currentFolderId || 'root'
       
-      // Mevcut klasördeki dokümanları filtrele
+      // Mevcut klasördeki dokümanları filtrele - çöp kutusundaki dokümanları hariç tut
       const folderDocs = documents.filter(doc => {
+        // Çöp kutusundaki dokümanları hariç tut
+        if (doc.isDeleted === true) return false
+        
         if (folderId === 'root' || !folderId) {
           return !doc.folderId || doc.folderId === null || doc.folderId === ''
         }
@@ -658,14 +692,63 @@ function Dashboard({ setIsAuthenticated }) {
     const duplicateFile = documents.find(doc => {
       const docFilename = (doc.filename || doc.name || '').toLowerCase().trim()
       const uploadFilename = file.name.toLowerCase().trim()
-      // Silinmemiş dosyaları kontrol et
-      return !doc.isDeleted && docFilename === uploadFilename
+      // Silinmemiş dosyaları kontrol et ve aynı klasörde olmalı
+      const docFolderId = doc.folderId || doc.parentFolderId || null
+      const currentFolderIdStr = currentFolderId ? String(currentFolderId) : null
+      const docFolderIdStr = docFolderId ? String(docFolderId) : null
+      return !doc.isDeleted && 
+             docFilename === uploadFilename &&
+             docFolderIdStr === currentFolderIdStr
     })
     
     if (duplicateFile) {
-      alert('Bu isimde bir dosya zaten mevcut. Lütfen farklı bir isim seçin veya mevcut dosyayı silin.')
-      e.target.value = '' // Input'u temizle
-      return
+      const confirmReplace = confirm(`"${file.name}" isimli bir dosya zaten mevcut. Mevcut dosyayı silip yeni dosyayı yüklemek istiyor musunuz?`)
+      if (!confirmReplace) {
+        e.target.value = '' // Input'u temizle
+        return
+      }
+      
+      // Mevcut dosyayı sil (onay zaten alındı, doğrudan sil)
+      try {
+        const docToDelete = duplicateFile
+        const docIdStr = String(docToDelete._id || docToDelete.id || docToDelete.backendId)
+        
+        // Backend ID'yi belirle
+        const backendId = docToDelete.backendId || docToDelete.id || docToDelete._id
+        const firebaseDocId = docToDelete.id || docToDelete._id
+
+        // Firebase'de dokümanı çöp kutusuna taşı (isDeleted flag'i ekle)
+        const { auth } = await import('../firebase/config')
+        const { moveDocumentToTrash } = await import('../firebase/documents')
+        const currentUser = auth.currentUser
+        
+        if (currentUser && firebaseDocId) {
+          await moveDocumentToTrash(firebaseDocId)
+        }
+
+        // Backend'den sil
+        if (backendId) {
+          try {
+            await api.delete(`/documents/${backendId}`)
+          } catch (err) {
+            console.error('Backend delete error:', err)
+          }
+        }
+
+        // State'den kaldır
+        setDocuments(prevDocs => prevDocs.filter(doc => {
+          const docIdStr2 = String(doc._id || doc.id || doc.backendId)
+          return docIdStr2 !== docIdStr
+        }))
+        
+        // Doküman listesini yenile
+        await loadDocuments()
+      } catch (deleteError) {
+        console.error('Mevcut dosya silinirken hata:', deleteError)
+        alert('Mevcut dosya silinirken bir hata oluştu. Lütfen tekrar deneyin.')
+        e.target.value = '' // Input'u temizle
+        return
+      }
     }
 
     setUploading(true)
@@ -896,7 +979,12 @@ function Dashboard({ setIsAuthenticated }) {
     setAskingDocQuestion(true)
     setDocAnswer(null)
     try {
-      const docId = viewingDoc._id || viewingDoc.id
+      // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+      const docId = viewingDoc.backendId || viewingDoc.id || viewingDoc._id
+      if (!docId) {
+        alert('Doküman ID bulunamadı')
+        return
+      }
       const response = await api.post(`/documents/${docId}/ask`, { question: docQuestion })
       setDocAnswer(response.data)
     } catch (err) {
@@ -913,22 +1001,14 @@ function Dashboard({ setIsAuthenticated }) {
     setGeneratingSummary(true)
     setAudioUrl(null) // Önceki ses dosyasını temizle
     try {
-      const docId = viewingDoc._id || viewingDoc.id
+      // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+      const docId = viewingDoc.backendId || viewingDoc.id || viewingDoc._id
+      if (!docId) {
+        alert('Doküman ID bulunamadı')
+        return
+      }
       const response = await api.post(`/documents/${docId}/summary`, { format: summaryFormat })
       setSummary(response.data)
-      
-      // Eğer podcast formatıysa ve ses dosyası varsa
-      if (summaryFormat === 'podcast') {
-        if (response.data.audioUrl) {
-          setAudioUrl(response.data.audioUrl)
-          console.log('✅ Audio URL received:', response.data.audioUrl)
-        } else if (response.data.audioError) {
-          console.warn('⚠️ Audio generation failed:', response.data.audioError)
-          // Kullanıcıya bilgi verilecek (UI'da gösterilecek)
-        } else {
-          console.warn('⚠️ No audio URL in response. TTS may not be configured.')
-        }
-      }
     } catch (err) {
       alert('Özet oluşturma hatası: ' + (err.response?.data?.message || err.message))
     } finally {
@@ -962,7 +1042,12 @@ function Dashboard({ setIsAuthenticated }) {
     if (!audioUrl || !viewingDoc) return
 
     try {
-      const docId = viewingDoc._id || viewingDoc.id
+      // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+      const docId = viewingDoc.backendId || viewingDoc.id || viewingDoc._id
+      if (!docId) {
+        alert('Doküman ID bulunamadı')
+        return
+      }
       const filename = audioUrl.split('/').pop()
       const response = await api.get(`/documents/${docId}/audio/${filename}`, {
         responseType: 'blob'
@@ -986,14 +1071,16 @@ function Dashboard({ setIsAuthenticated }) {
     if (!viewingDoc || !summary) return
 
     try {
-      const docId = viewingDoc._id || viewingDoc.id
+      // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+      const docId = viewingDoc.backendId || viewingDoc.id || viewingDoc._id
+      if (!docId) {
+        alert('Doküman ID bulunamadı')
+        return
+      }
       let textToDownload = ''
       let filename = ''
 
-      if (summaryFormat === 'podcast') {
-        textToDownload = summary.podcastScript || summary.detailedSummary || summary.shortSummary || ''
-        filename = `${viewingDoc.filename.replace(/\.[^/.]+$/, '')}_podcast.txt`
-      } else if (summaryFormat === 'detailed') {
+      if (summaryFormat === 'detailed') {
         textToDownload = summary.detailedSummary || summary.shortSummary || ''
         filename = `${viewingDoc.filename.replace(/\.[^/.]+$/, '')}_detayli_ozet.txt`
       } else {
@@ -1025,6 +1112,12 @@ function Dashboard({ setIsAuthenticated }) {
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) {
       alert('Klasör adı boş olamaz')
+      return
+    }
+
+    // Maksimum 20 karakter kontrolü
+    if (newFolderName.trim().length > 20) {
+      alert('Klasör adı maksimum 20 karakter olabilir')
       return
     }
 
@@ -1122,109 +1215,50 @@ function Dashboard({ setIsAuthenticated }) {
   }
 
   // Dokümanı klasöre taşı (drag and drop)
-  const handleMoveDocumentToFolder = async (docId, folderId) => {
-    try {
-      // Backend'de güncelle
-      await api.put(`/documents/${docId}/folder`, { folderId })
-      
-      // Local state'i güncelle
-      setDocuments(documents.map(doc => 
-        (doc._id || doc.id) === docId 
-          ? { ...doc, folderId: folderId }
-          : doc
-      ))
-      
-      // Firebase'de güncelle
-      try {
-        const { auth } = await import('../firebase/config')
-        const { updateDocumentFolder } = await import('../firebase/documents')
-        const currentUser = auth.currentUser
-        if (currentUser) {
-          const { getUserDocuments } = await import('../firebase/documents')
-          const firebaseDocs = await getUserDocuments(currentUser.uid)
-          const firebaseDoc = firebaseDocs.find(d => d.backendId === docId || d.id === docId)
-          if (firebaseDoc) {
-            await updateDocumentFolder(firebaseDoc.id, folderId)
-          }
-        }
-      } catch (firebaseError) {
-        console.warn('Firebase güncelleme hatası:', firebaseError)
-      }
-      
-      // Klasör sayısını güncelle
-      if (folderId) {
-        setFolders(folders.map(f => 
-          f.id === folderId 
-            ? { ...f, documentCount: (f.documentCount || 0) + 1 }
-            : f
-        ))
-      }
-    } catch (err) {
-      alert('Doküman taşınırken hata: ' + (err.response?.data?.message || err.message))
-    }
-  }
-
-  // Drag handlers
-  const handleDragStart = (e, docId) => {
-    setDraggedDocId(docId)
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', docId)
-  }
-
-  const handleDragOver = (e, folderId) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    setDragOverFolderId(folderId)
-  }
-
-  const handleDragLeave = () => {
-    setDragOverFolderId(null)
-  }
-
-  const handleDrop = async (e, folderId) => {
-    e.preventDefault()
-    setDragOverFolderId(null)
-    
-    if (draggedDocId) {
-      await handleMoveDocumentToFolder(draggedDocId, folderId)
-      setDraggedDocId(null)
-    }
-  }
-
   // Breadcrumb'tan bir üst dizine geç
   const navigateToFolder = (folderId) => {
+    console.log('📂 navigateToFolder çağrıldı:', { folderId, currentFolderId })
     if (folderId === null) {
       setCurrentFolderId(null)
       setFolderPath([])
     } else {
       setCurrentFolderId(folderId)
+      // Klasör değiştiğinde dokümanları ve klasörleri yeniden yükle
+      // useEffect zaten currentFolderId değiştiğinde çağrılacak, ama manuel olarak da çağıralım
     }
   }
 
   // Sıralama ve filtreleme
   const getSortedItems = () => {
     // Hem klasörleri hem dokümanları birleştir
+    // Not: documents ve folders state'leri zaten currentFolderId'ye göre filtrelenmiş olmalı
+    // Ancak güvenlik için tekrar kontrol ediyoruz
     let allItems = [...folders, ...documents]
 
-    // Mevcut klasördeki öğeleri filtrele
+    // Mevcut klasördeki öğeleri filtrele (ekstra güvenlik kontrolü)
     allItems = allItems.filter(item => {
       if (currentFolderId) {
         // Klasör içindeyse, bu klasöre ait olanları göster
-        // String/number karşılaştırması için normalize et
         const normalizedCurrentFolderId = String(currentFolderId)
         if (item.type === 'FOLDER') {
           const itemParentId = item.parentFolderId || item.parentId
           return itemParentId === currentFolderId || String(itemParentId) === normalizedCurrentFolderId
         } else {
+          // Doküman için folderId kontrolü
           const itemFolderId = item.folderId
+          if (!itemFolderId || itemFolderId === null || itemFolderId === '') {
+            return false // folderId yoksa ve bir klasör içindeysek, gösterme
+          }
           return itemFolderId === currentFolderId || String(itemFolderId) === normalizedCurrentFolderId
         }
       } else {
         // Root seviyede, parentFolderId olmayanları göster
         if (item.type === 'FOLDER') {
-          return !item.parentFolderId || item.parentFolderId === null || item.parentFolderId === ''
+          const hasParent = item.parentFolderId || item.parentId
+          return !hasParent || hasParent === null || hasParent === ''
         } else {
-          return !item.folderId || item.folderId === null || item.folderId === ''
+          const hasFolderId = item.folderId
+          return !hasFolderId || hasFolderId === null || hasFolderId === ''
         }
       }
     })
@@ -1303,15 +1337,23 @@ function Dashboard({ setIsAuthenticated }) {
       setAudioElement(null)
     }
     
+    // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+    const backendId = doc.backendId || doc.id || doc._id
+    
+    if (!backendId) {
+      alert('Doküman ID bulunamadı')
+      return
+    }
+    
     // Doküman içeriğini yükle
     try {
-      const response = await api.get(`/documents/${doc._id || doc.id}`)
+      const response = await api.get(`/documents/${backendId}`)
       setDocContent(response.data)
       
       // Özeti de yükle
       if (!doc.summary) {
         try {
-          const summaryResponse = await api.get(`/documents/${doc._id || doc.id}/summary`)
+          const summaryResponse = await api.get(`/documents/${backendId}/summary`)
           setSummary(summaryResponse.data)
         } catch (err) {
           console.warn('Özet yüklenemedi:', err)
@@ -1324,7 +1366,9 @@ function Dashboard({ setIsAuthenticated }) {
       }
     } catch (err) {
       console.error('Doküman yüklenemedi:', err)
-      alert('Doküman içeriği yüklenemedi')
+      console.error('Backend ID:', backendId)
+      console.error('Doküman objesi:', doc)
+      alert('Doküman içeriği yüklenemedi: ' + (err.response?.data?.message || err.message))
     }
   }
 
@@ -1332,8 +1376,16 @@ function Dashboard({ setIsAuthenticated }) {
   const handleSaveDocument = async () => {
     if (!viewingDoc || !editingContent) return
 
+    // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+    const backendId = viewingDoc.backendId || viewingDoc.id || viewingDoc._id
+    
+    if (!backendId) {
+      alert('Doküman ID bulunamadı')
+      return
+    }
+
     try {
-      await api.put(`/documents/${viewingDoc._id || viewingDoc.id}/content`, {
+      await api.put(`/documents/${backendId}/content`, {
         content: editingContent
       })
       setIsEditing(false)
@@ -1513,7 +1565,11 @@ function Dashboard({ setIsAuthenticated }) {
     } else if (action === 'rename') {
       const doc = documents.find(d => (d._id || d.id) === docId)
       setRenameDocId(docId)
-      setNewDocumentName(doc?.filename || doc?.name || '')
+      // Dosya adından uzantıyı çıkar (sadece ismi göster)
+      const filename = doc?.filename || doc?.name || ''
+      const lastDotIndex = filename.lastIndexOf('.')
+      const nameWithoutExt = lastDotIndex > 0 ? filename.substring(0, lastDotIndex) : filename
+      setNewDocumentName(nameWithoutExt)
       setShowRenameModal(true)
     } else if (action === 'move') {
       setMoveDocId(docId)
@@ -1574,15 +1630,66 @@ function Dashboard({ setIsAuthenticated }) {
     }
 
     try {
-      // Backend'de güncelle
-      await api.put(`/documents/${renameDocId}/rename`, {
-        filename: newDocumentName.trim()
+      // Taşınan dokümanı bul
+      const docToRename = documents.find(doc => (doc._id || doc.id || doc.backendId) === renameDocId)
+      if (!docToRename) {
+        console.error('❌ Frontend: Doküman bulunamadı:', { renameDocId, availableDocs: documents.map(d => ({ id: d.id, _id: d._id, backendId: d.backendId })) })
+        alert('Doküman bulunamadı')
+        return
+      }
+
+      // Orijinal dosya adından uzantıyı al
+      const originalFilename = docToRename.filename || docToRename.name || ''
+      const lastDotIndex = originalFilename.lastIndexOf('.')
+      const extension = lastDotIndex > 0 ? originalFilename.substring(lastDotIndex) : ''
+      
+      // Yeni adı al ve uzantıyı koru
+      let finalName = newDocumentName.trim()
+      
+      // Eğer kullanıcı uzantı eklememişse, orijinal uzantıyı ekle
+      if (extension && !finalName.toLowerCase().endsWith(extension.toLowerCase())) {
+        finalName = finalName + extension
+      }
+      
+      // Uzantı hariç maksimum 20 karakter kontrolü
+      const nameWithoutExt = extension ? finalName.slice(0, -extension.length) : finalName
+      if (nameWithoutExt.length > 20) {
+        alert('Dosya adı (uzantı hariç) maksimum 20 karakter olabilir')
+        return
+      }
+      
+      if (nameWithoutExt.length === 0) {
+        alert('Dosya adı boş olamaz')
+        return
+      }
+
+      // Backend ID'yi belirle (backendId varsa onu kullan, yoksa id/_id kullan)
+      const backendDocId = docToRename.backendId || docToRename._id || docToRename.id
+      console.log('📝 Doküman adı değiştiriliyor:', { 
+        frontendId: renameDocId, 
+        backendId: backendDocId,
+        originalName: originalFilename,
+        newName: finalName,
+        extension: extension
       })
+
+      // Backend'de güncelle
+      try {
+        await api.put(`/documents/${backendDocId}/rename`, {
+          filename: finalName
+        })
+      } catch (apiError) {
+        // Backend bağlantı hatası kontrolü
+        if (apiError.code === 'ECONNREFUSED' || apiError.message?.includes('ECONNREFUSED')) {
+          throw new Error('Backend sunucusuna bağlanılamıyor. Lütfen backend sunucusunun çalıştığından emin olun (port 5000).')
+        }
+        throw apiError
+      }
 
       // Local state'i güncelle
       setDocuments(documents.map(doc => 
-        (doc._id || doc.id) === renameDocId 
-          ? { ...doc, filename: newDocumentName.trim() }
+        (doc._id || doc.id || doc.backendId) === renameDocId 
+          ? { ...doc, filename: finalName }
           : doc
       ))
 
@@ -1594,21 +1701,27 @@ function Dashboard({ setIsAuthenticated }) {
         if (currentUser) {
           const { getUserDocuments } = await import('../firebase/documents')
           const firebaseDocs = await getUserDocuments(currentUser.uid)
-          const firebaseDoc = firebaseDocs.find(d => d.backendId === renameDocId || d.id === renameDocId)
+          const firebaseDoc = firebaseDocs.find(d => d.backendId === backendDocId || d.id === backendDocId || (d._id || d.id) === renameDocId)
           if (firebaseDoc) {
-            await updateDocumentFilename(firebaseDoc.id, newDocumentName.trim())
+            await updateDocumentFilename(firebaseDoc.id, finalName)
           }
         }
       } catch (firebaseError) {
         console.warn('Firebase güncelleme hatası:', firebaseError)
+        // Firebase hatası kritik değil, devam et
       }
+
+      // Dokümanları yeniden yükle (güncel durumu görmek için)
+      await loadDocuments()
 
       setShowRenameModal(false)
       setRenameDocId(null)
       setNewDocumentName('')
-      alert('Doküman adı başarıyla güncellendi')
+      console.log('✅ Doküman adı başarıyla güncellendi')
     } catch (err) {
-      alert('Doküman adı güncellenirken hata: ' + (err.response?.data?.message || err.message))
+      console.error('Doküman adı değiştirme hatası:', err)
+      const errorMessage = err.response?.data?.message || err.message || 'Bilinmeyen bir hata oluştu'
+      alert(`Doküman adı güncellenirken hata: ${errorMessage}`)
     }
   }
 
@@ -1628,6 +1741,7 @@ function Dashboard({ setIsAuthenticated }) {
         <aside className={`dashboard-left-sidebar ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
           <nav className="navbar-left">
             <div className="nav-menu-left">
+              {/* En Üstte: Anasayfa */}
               <a 
                 href="/" 
                 className="nav-link-left"
@@ -1639,68 +1753,8 @@ function Dashboard({ setIsAuthenticated }) {
                 <Home className="nav-link-icon-left" />
                 Anasayfa
               </a>
-              <div className="nav-divider-left"></div>
-              <a 
-                href="/#features" 
-                className="nav-link-left"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/#features')
-                  // Ana sayfaya gittikten sonra scroll yapmak için kısa bir gecikme
-                  setTimeout(() => {
-                    const element = document.getElementById('features')
-                    if (element) {
-                      element.scrollIntoView({ behavior: 'smooth' })
-                    }
-                  }, 100)
-                }}
-              >
-                Özellikler
-              </a>
-              <a 
-                href="/#how-it-works" 
-                className="nav-link-left"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/#how-it-works')
-                  // Ana sayfaya gittikten sonra scroll yapmak için kısa bir gecikme
-                  setTimeout(() => {
-                    const element = document.getElementById('how-it-works')
-                    if (element) {
-                      element.scrollIntoView({ behavior: 'smooth' })
-                    }
-                  }, 100)
-                }}
-              >
-                Nasıl Çalışır?
-              </a>
-              <a 
-                href="/#about" 
-                className="nav-link-left"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/#about')
-                  // Ana sayfaya gittikten sonra scroll yapmak için kısa bir gecikme
-                  setTimeout(() => {
-                    const element = document.getElementById('about')
-                    if (element) {
-                      element.scrollIntoView({ behavior: 'smooth' })
-                    } else {
-                      // Eğer about bölümü yoksa sayfanın başına scroll yap
-                      window.scrollTo({ top: 0, behavior: 'smooth' })
-                    }
-                  }, 100)
-                }}
-              >
-                Hakkımızda
-              </a>
-              <a 
-                href="mailto:info@sema.com" 
-                className="nav-link-left"
-              >
-                İletişim
-              </a>
-              <div className="nav-divider-left"></div>
+              
+              {/* Doküman İşlemleri */}
               <a 
                 href="#" 
                 className="nav-link-left"
@@ -1730,7 +1784,24 @@ function Dashboard({ setIsAuthenticated }) {
                 className="nav-link-left"
                 onClick={(e) => {
                   e.preventDefault()
-                  document.querySelector('.documents-search-wrapper')?.scrollIntoView({ behavior: 'smooth' })
+                  setCurrentPage('documents')
+                  // Arama kutusunu bul ve vurgula
+                  setTimeout(() => {
+                    const searchBox = document.querySelector('.nav-search .search-box')
+                    const searchInput = document.querySelector('.nav-search .search-box input')
+                    if (searchBox && searchInput) {
+                      // Scroll yap
+                      searchBox.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      // Border'ı vurgula
+                      searchBox.classList.add('search-highlight')
+                      // Input'a focus yap
+                      searchInput.focus()
+                      // 3 saniye sonra highlight'ı kaldır
+                      setTimeout(() => {
+                        searchBox.classList.remove('search-highlight')
+                      }, 3000)
+                    }
+                  }, 100)
                 }}
               >
                 <Search className="nav-link-icon-left" />
@@ -1759,99 +1830,159 @@ function Dashboard({ setIsAuthenticated }) {
                 <Trash className="nav-link-icon-left" />
                 Çöp Kutusu
               </a>
-            </div>
-            <div className="nav-user-section">
-              <span className="user-name-left">{user.name || user.email}</span>
-              <div className="nav-actions-left">
-                <div className="theme-selector">
-                  <label className="theme-selector-label">Tema:</label>
-                  <div className="theme-options">
-                    <button 
-                      onClick={() => changeTheme('light')} 
-                      className={`theme-option ${theme === 'light' ? 'active' : ''}`}
-                      title="Açık Tema (Mavi)"
-                    >
-                      <Sun size={16} />
-                      <span>Mavi</span>
-                    </button>
-                    <button 
-                      onClick={() => changeTheme('light-green')} 
-                      className={`theme-option ${theme === 'light-green' ? 'active' : ''}`}
-                      title="Açık Tema (Yeşil)"
-                    >
-                      <Sun size={16} />
-                      <span>Yeşil</span>
-                    </button>
-                    <button 
-                      onClick={() => changeTheme('dark')} 
-                      className={`theme-option ${theme === 'dark' ? 'active' : ''}`}
-                      title="Koyu Tema"
-                    >
-                      <Moon size={16} />
-                      <span>Koyu</span>
-                    </button>
-                  </div>
-                  
-                  {/* Özel Renk Seçici */}
-                  <div className="custom-color-selector">
-                    <button
-                      onClick={() => setShowColorPicker(!showColorPicker)}
-                      className={`custom-color-btn ${theme === 'custom' ? 'active' : ''}`}
-                      title="Kendi rengini seç"
-                    >
-                      <Sparkles size={16} />
-                      <span>{theme === 'custom' ? 'Özel Tema' : 'Kendi Rengini Seç'}</span>
-                    </button>
+              
+              {/* Ana Sayfa Linkleri */}
+              <a 
+                href="/#features" 
+                className="nav-link-left"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/')
+                  setTimeout(() => {
+                    const element = document.getElementById('features')
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth' })
+                    }
+                  }, 100)
+                }}
+              >
+                Özellikler
+              </a>
+              <a 
+                href="/#how-it-works" 
+                className="nav-link-left"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/')
+                  setTimeout(() => {
+                    const element = document.getElementById('how-it-works')
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth' })
+                    }
+                  }, 100)
+                }}
+              >
+                Nasıl Çalışır?
+              </a>
+              <a 
+                href="/#about" 
+                className="nav-link-left"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/')
+                  setTimeout(() => {
+                    const element = document.getElementById('about')
+                    if (element) {
+                      element.scrollIntoView({ behavior: 'smooth' })
+                    } else {
+                      window.scrollTo({ top: 0, behavior: 'smooth' })
+                    }
+                  }, 100)
+                }}
+              >
+                Hakkımızda
+              </a>
+              <a 
+                href="mailto:info@sema.com" 
+                className="nav-link-left"
+              >
+                İletişim
+              </a>
+              
+              {/* Tema ve Çıkış */}
+              <div className="nav-user-section">
+                <span className="user-name-left">{user.name || user.email}</span>
+                <div className="nav-actions-left">
+                  <div className="theme-selector">
+                    <label className="theme-selector-label">Tema:</label>
+                    <div className="theme-options">
+                      <button 
+                        onClick={() => changeTheme('light')} 
+                        className={`theme-option ${theme === 'light' ? 'active' : ''}`}
+                        title="Açık Tema (Mavi)"
+                      >
+                        <Sun size={16} />
+                        <span>Mavi</span>
+                      </button>
+                      <button 
+                        onClick={() => changeTheme('light-green')} 
+                        className={`theme-option ${theme === 'light-green' ? 'active' : ''}`}
+                        title="Açık Tema (Yeşil)"
+                      >
+                        <Sun size={16} />
+                        <span>Yeşil</span>
+                      </button>
+                      <button 
+                        onClick={() => changeTheme('dark')} 
+                        className={`theme-option ${theme === 'dark' ? 'active' : ''}`}
+                        title="Koyu Tema"
+                      >
+                        <Moon size={16} />
+                        <span>Koyu</span>
+                      </button>
+                    </div>
                     
-                    {showColorPicker && (
-                      <div className="color-picker-panel">
-                        <label className="color-picker-label">Renk Seç:</label>
-                        <div className="color-picker-wrapper">
-                          <input
-                            type="color"
-                            value={customColor}
-                            onChange={(e) => setCustomColor(e.target.value)}
-                            className="color-picker-input"
-                          />
-                          <div className="color-preview" style={{ backgroundColor: customColor }}></div>
-                          <span className="color-hex">{customColor}</span>
-                        </div>
-                        <button
-                          onClick={() => generateCustomTheme(customColor)}
-                          className="generate-theme-btn"
-                          disabled={generatingCustomTheme}
-                        >
-                          {generatingCustomTheme ? (
-                            <>
-                              <Loader className="spinning" size={16} />
-                              <span>Oluşturuluyor...</span>
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles size={16} />
-                              <span>Gemini ile Tema Oluştur</span>
-                            </>
-                          )}
-                        </button>
-                        {theme === 'custom' && (
+                    {/* Özel Renk Seçici */}
+                    <div className="custom-color-selector">
+                      <button
+                        onClick={() => setShowColorPicker(!showColorPicker)}
+                        className={`custom-color-btn ${theme === 'custom' ? 'active' : ''}`}
+                        title="Kendi rengini seç"
+                      >
+                        <Sparkles size={16} />
+                        <span>{theme === 'custom' ? 'Özel Tema' : 'Kendi Rengini Seç'}</span>
+                      </button>
+                      
+                      {showColorPicker && (
+                        <div className="color-picker-panel">
+                          <label className="color-picker-label">Renk Seç:</label>
+                          <div className="color-picker-wrapper">
+                            <input
+                              type="color"
+                              value={customColor}
+                              onChange={(e) => setCustomColor(e.target.value)}
+                              className="color-picker-input"
+                            />
+                            <div className="color-preview" style={{ backgroundColor: customColor }}></div>
+                            <span className="color-hex">{customColor}</span>
+                          </div>
                           <button
-                            onClick={() => {
-                              changeTheme('light')
-                              setShowColorPicker(false)
-                            }}
-                            className="reset-theme-btn"
+                            onClick={() => generateCustomTheme(customColor)}
+                            className="generate-theme-btn"
+                            disabled={generatingCustomTheme}
                           >
-                            Varsayılan Temaya Dön
+                            {generatingCustomTheme ? (
+                              <>
+                                <Loader className="spinning" size={16} />
+                                <span>Oluşturuluyor...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles size={16} />
+                                <span>Gemini ile Tema Oluştur</span>
+                              </>
+                            )}
                           </button>
-                        )}
-                      </div>
-                    )}
+                          {theme === 'custom' && (
+                            <button
+                              onClick={() => {
+                                changeTheme('light')
+                                setShowColorPicker(false)
+                              }}
+                              className="reset-theme-btn"
+                            >
+                              Varsayılan Temaya Dön
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  <button onClick={handleLogout} className="logout-btn-left">
+                    <LogOut />
+                    Çıkış Yap
+                  </button>
                 </div>
-                <button onClick={handleLogout} className="logout-btn-left">
-                  <LogOut />
-                  Çıkış
-                </button>
               </div>
             </div>
           </nav>
@@ -1868,22 +1999,32 @@ function Dashboard({ setIsAuthenticated }) {
           </button>
           <nav className="dashboard-nav">
             <div className={`nav-content ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-              <div className="logo">
-                <Sparkles className="logo-icon" />
+              {/* SEMA Logo - Sol Üstte */}
+              <div className="nav-logo">
                 <span>SEMA</span>
               </div>
-              <div className="nav-search">
-                <div className="search-box">
-                  <Search className="search-icon" />
-                  <input
-                    type="text"
-                    placeholder="arama yap"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  />
+              {currentPage !== 'summarize' && (
+                <div className="nav-search">
+                  <div className={`search-box ${searchQuery.trim() ? 'search-active' : ''}`}>
+                    <Search className="search-icon" />
+                    <input
+                      type="text"
+                      placeholder="arama yap"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                      onFocus={(e) => {
+                        e.target.closest('.search-box')?.classList.add('search-active')
+                      }}
+                      onBlur={(e) => {
+                        if (!e.target.value.trim()) {
+                          e.target.closest('.search-box')?.classList.remove('search-active')
+                        }
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="nav-right">
                 <button 
                   className="profile-btn"
@@ -2007,7 +2148,7 @@ function Dashboard({ setIsAuthenticated }) {
                     <div className="summarize-output">
                       {summaryResult ? (
                         <div className="summary-result">
-                          <p>{summaryResult}</p>
+                          <p dangerouslySetInnerHTML={{ __html: parseMarkdown(summaryResult) }}></p>
                         </div>
                       ) : (
                         <div className="output-placeholder">
@@ -2112,8 +2253,7 @@ function Dashboard({ setIsAuthenticated }) {
               {answer && (
                 <div className="answer-box">
                   <h3>AI Cevabı:</h3>
-                  <div className="answer-content" style={{ whiteSpace: 'pre-wrap', lineHeight: '1.8' }}>
-                    {answer.answer}
+                  <div className="answer-content" dangerouslySetInnerHTML={{ __html: parseMarkdown(answer.answer) }}>
                   </div>
                   {answer.sources && answer.sources.length > 0 && (
                     <div className="sources">
@@ -2281,9 +2421,10 @@ function Dashboard({ setIsAuthenticated }) {
                     ) : folderSummary ? (
                       <div className="folder-highlights-card">
                         <h4>Klasörde öne çıkanlar</h4>
-                        <p className="folder-summary-text">
-                          {folderSummary.summary}
-                        </p>
+                        <p
+                          className="folder-summary-text"
+                          dangerouslySetInnerHTML={{ __html: parseMarkdown(folderSummary.summary || '') }}
+                        ></p>
                         {folderSummary.documentCount > 0 && (
                           <div className="folder-stats">
                             <span>{folderSummary.documentCount} doküman</span>
@@ -2329,11 +2470,8 @@ function Dashboard({ setIsAuthenticated }) {
                     return (
                       <div
                         key={item.id}
-                        className={`folder-card ${viewMode === 'list' ? 'list-view' : ''} ${dragOverFolderId === item.id ? 'drag-over' : ''}`}
+                        className={`folder-card ${viewMode === 'list' ? 'list-view' : ''}`}
                         onClick={() => navigateToFolder(item.id)}
-                        onDragOver={(e) => handleDragOver(e, item.id)}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, item.id)}
                       >
                         <div className="folder-header">
                           <Folder className="folder-icon" />
@@ -2362,7 +2500,6 @@ function Dashboard({ setIsAuthenticated }) {
                           </div>
                         </div>
                         <div className="folder-info">
-                          <span>{item.documentCount || 0} dosya</span>
                           <span className="doc-date">
                             {new Date(item.createdAt).toLocaleDateString('tr-TR')}
                           </span>
@@ -2379,18 +2516,12 @@ function Dashboard({ setIsAuthenticated }) {
                   return (
                   <div 
                     key={doc._id || doc.id} 
-                    className={`document-card document-card-${fileInfo.type} ${viewMode === 'list' ? 'list-view' : ''} ${draggedDocId === (doc._id || doc.id) ? 'dragging' : ''}`}
+                    className={`document-card document-card-${fileInfo.type} ${viewMode === 'list' ? 'list-view' : ''}`}
                     style={viewMode === 'list' ? {
                       borderLeft: `4px solid ${fileInfo.color}`
                     } : {
                       borderLeft: `4px solid ${fileInfo.color}`,
                       backgroundColor: fileInfo.bgColor
-                    }}
-                    draggable={true} // Her seviyede drag edilebilir
-                    onDragStart={(e) => handleDragStart(e, doc._id || doc.id)}
-                    onDragEnd={() => {
-                      setDraggedDocId(null)
-                      setDragOverFolderId(null)
                     }}
                     onContextMenu={(e) => handleDocumentContextMenu(e, doc._id || doc.id)}
                   >
@@ -2613,7 +2744,8 @@ function Dashboard({ setIsAuthenticated }) {
       {viewingDoc && (() => {
         const fileInfo = getFileTypeInfo(viewingDoc)
         const fileType = fileInfo.type
-        const docId = viewingDoc._id || viewingDoc.id
+        // Backend ID'yi belirle - önce backendId, sonra id, sonra _id
+        const docId = viewingDoc.backendId || viewingDoc.id || viewingDoc._id
         const token = localStorage.getItem('token')
         // File URL - for iframe we need token in query param, for other requests axios adds it to header
         const fileUrl = token ? `/api/documents/${docId}/file?token=${encodeURIComponent(token)}` : `/api/documents/${docId}/file`
@@ -2703,12 +2835,6 @@ function Dashboard({ setIsAuthenticated }) {
                       >
                         Uzun Özet
                       </button>
-                      <button
-                        className={summaryFormat === 'podcast' ? 'active' : ''}
-                        onClick={() => setSummaryFormat('podcast')}
-                      >
-                        Podcast
-                      </button>
                     </div>
                     <button
                       onClick={handleGenerateSummaryWithFormat}
@@ -2753,57 +2879,6 @@ function Dashboard({ setIsAuthenticated }) {
                             <p>{summary.detailedSummary || summary.shortSummary || 'Detaylı özet yükleniyor...'}</p>
                           </div>
                         )}
-                        {summaryFormat === 'podcast' && (
-                          <div className="summary-section">
-                            <div className="summary-header-with-actions">
-                              <h4>Podcast Senaryosu</h4>
-                              <div className="summary-actions">
-                                {audioUrl && (
-                                  <>
-                                    <button
-                                      onClick={handleToggleAudio}
-                                      className="btn-audio-play"
-                                      title={isPlaying ? 'Durdur' : 'Oynat'}
-                                    >
-                                      {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                                    </button>
-                                    <button
-                                      onClick={handleDownloadAudio}
-                                      className="btn-download-audio"
-                                      title="Sesi İndir"
-                                    >
-                                      <Download size={18} />
-                                    </button>
-                                  </>
-                                )}
-                                <button
-                                  onClick={handleDownloadSummary}
-                                  className="btn-download-summary"
-                                  title="Özet Metnini İndir"
-                                >
-                                  <FileText size={18} />
-                                </button>
-                              </div>
-                            </div>
-                            {audioUrl ? (
-                              <div className="audio-info">
-                                <Volume2 size={16} />
-                                <span>Ses dosyası hazır. Oynatmak için yukarıdaki butonu kullanın.</span>
-                              </div>
-                            ) : summaryFormat === 'podcast' && summary.audioError ? (
-                              <div className="audio-info" style={{ background: 'rgba(220, 38, 38, 0.1)', border: '1px solid rgba(220, 38, 38, 0.3)' }}>
-                                <Volume2 size={16} />
-                                <span>Ses dosyası oluşturulamadı: {summary.audioError}. Sadece metin olarak görüntüleniyor.</span>
-                              </div>
-                            ) : summaryFormat === 'podcast' ? (
-                              <div className="audio-info" style={{ background: 'rgba(251, 191, 36, 0.1)', border: '1px solid rgba(251, 191, 36, 0.3)' }}>
-                                <Volume2 size={16} />
-                                <span>Ses dosyası oluşturulamadı. TTS için Google Cloud credentials gerekli. Sadece metin olarak görüntüleniyor.</span>
-                              </div>
-                            ) : null}
-                            <p>{summary.podcastScript || summary.detailedSummary || summary.shortSummary || 'Podcast senaryosu oluşturuluyor...'}</p>
-                          </div>
-                        )}
                       </>
                     ) : (
                       <div className="loading">Özet oluşturmak için format seçin ve "Özet Oluştur" butonuna tıklayın</div>
@@ -2833,7 +2908,7 @@ function Dashboard({ setIsAuthenticated }) {
                     {docAnswer && (
                       <div className="document-answer">
                         <h5>Cevap:</h5>
-                        <p>{docAnswer.answer || docAnswer}</p>
+                        <p dangerouslySetInnerHTML={{ __html: parseMarkdown(docAnswer.answer || docAnswer) }}></p>
                       </div>
                     )}
                   </div>
@@ -2941,12 +3016,19 @@ function Dashboard({ setIsAuthenticated }) {
                 type="text"
                 placeholder="Klasör adı"
                 value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
+                onChange={(e) => {
+                  // Maksimum 20 karakter sınırı
+                  const value = e.target.value
+                  if (value.length <= 20) {
+                    setNewFolderName(value)
+                  }
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && handleCreateFolder()}
                 className="folder-name-input"
+                maxLength={20}
                 autoFocus
               />
-              <p className="folder-hint">Klasör adı dosya uzantısı içeremez (örn: .exe, .txt)</p>
+              <p className="folder-hint">Maksimum 20 karakter. Klasör adı dosya uzantısı içeremez (örn: .exe, .txt)</p>
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowCreateFolderModal(false)} className="btn-cancel">
@@ -2981,13 +3063,23 @@ function Dashboard({ setIsAuthenticated }) {
             <div className="modal-body">
               <input
                 type="text"
-                placeholder="Dosya adı"
+                placeholder="Dosya adı (uzantı otomatik korunur)"
                 value={newDocumentName}
-                onChange={(e) => setNewDocumentName(e.target.value)}
+                onChange={(e) => {
+                  // Maksimum 20 karakter sınırı
+                  const value = e.target.value
+                  if (value.length <= 20) {
+                    setNewDocumentName(value)
+                  }
+                }}
                 onKeyPress={(e) => e.key === 'Enter' && handleRenameDocument()}
                 className="folder-name-input"
+                maxLength={20}
                 autoFocus
               />
+              <p className="folder-hint" style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Maksimum 20 karakter (uzantı hariç). Uzantı otomatik olarak korunur.
+              </p>
             </div>
             <div className="modal-footer">
               <button onClick={() => {

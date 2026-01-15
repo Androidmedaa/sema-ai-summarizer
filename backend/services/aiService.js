@@ -260,39 +260,15 @@ export async function askQuestion(documents, question, isSingleDocument = false)
         }
       }
       
-      prompt = `Sen çok üst düzey bir doküman analiz asistanısın.
+      prompt = `Kullanıcının sorusunu yanıtlamak için dokümanı analiz et.
 
-Yüklediğim dokümanı:
-- Satır satır
-- Bağlamı kaçırmadan
-- Teknik terimleri doğru yorumlayarak
-- Örtük (açıkça yazılmamış) anlamları da çıkararak
-derinlemesine analiz et.
-
-Aşağıdaki kurallara kesinlikle uy:
-
-1) Dokümanı tam olarak okuduğunu varsayma, gerçekten analiz et.
-2) Cevap verirken:
-   - Dokümandaki ilgili bölümü zihinsel olarak referans al
-   - Gerekirse bölüm / başlık / kavram ismi belirt
-3) Eğer sorduğum soru dokümanda:
-   - Açıkça varsa → net ve kısa cevap ver
-   - Dolaylı varsa → mantık yürüterek açıkla
-   - Hiç yoksa → "Dokümanda bu bilgi yer almıyor" de ve tahmin etme
-4) Teknik, akademik veya resmi bir dil kullan ama:
-   - Gereksiz uzunluk yapma
-   - Ezbere tanım yazma
-5) Çelişki, eksik bilgi veya belirsizlik varsa:
-   - Bunları özellikle işaretle
-   - Neden sorun olduğunu açıkla
-6) Tablo, liste veya madde yapısı varsa:
-   - Yapıyı koruyarak açıkla
-   - Gerekirse sadeleştirerek yeniden yaz
-7) Sorularıma cevap verirken:
-   - Sadece genel bilgiye değil
-   - Özellikle BU dokümana dayan
-8) Cevabını TAM CÜMLELER halinde, akıcı ve anlaşılır bir şekilde yaz.
-9) Sadece liste veya madde işareti değil, açıklayıcı paragraflar kullan.
+ÖNEMLİ KURALLAR:
+1. Soruya doğrudan ve net cevap ver - gereksiz detaylara girme
+2. Cevabın maksimum 4 paragraf olmalı - aşırı uzun cevaplar verme
+3. Sadece soruyla ilgili bilgileri kullan, dokümanın tamamından bahsetme
+4. Markdown formatı kullanma (bold, italic vb.), sadece düz metin yaz
+5. Kısa, öz ve anlaşılır cevaplar ver
+6. Eğer soru dokümanda yoksa, "Dokümanda bu bilgi yer almıyor" de
 
 Doküman Adı: ${doc.filename || 'Bilinmeyen'}
 
@@ -301,7 +277,7 @@ ${docText.substring(0, 8000)}
 
 Kullanıcının Sorusu: "${question}"
 
-Şimdi yukarıdaki kurallara göre soruyu TAM CÜMLELER halinde, detaylı ve anlaşılır bir şekilde cevapla.`
+Şimdi yukarıdaki kurallara göre soruya doğrudan, kısa ve öz bir cevap ver (maksimum 4 paragraf). Gereksiz uzunluk yapma ve sadece soruyla ilgili bilgileri kullan.`
 
       console.log('📤 Prompt gönderiliyor, uzunluk:', prompt.length)
     } else {
@@ -316,56 +292,51 @@ ${docText.substring(0, 4000)}`
         })
         .join('\n\n' + '='.repeat(80) + '\n\n')
 
-      prompt = `Sistemde yüklü olan TÜM dokümanları birlikte değerlendir.
+      prompt = `Kullanıcının sorusunu yanıtlamak için dokümanları analiz et.
 
-Kullanıcının sorusu, tek bir dokümana değil,
-dokümanlar ARASI karşılaştırma ve analiz gerektirebilir.
-
-🎯 Görevin:
-1. Kullanıcının sorusunu analiz et
-2. Gerekli olan dokümanları belirle
-3. Dokümanları içerik, yapı ve bağlam açısından karşılaştır
-4. Gerekçeli ve açık bir cevap üret
-
-📄 Değerlendirme Kriterleri (gerektiğinde kullan):
-- Başlık ve alt başlıkların tutarlılığı
-- Bölümlerin mantıksal sıralaması
-- Paragraf bütünlüğü
-- Tekrar eden veya kopuk içerik
-- Genel okunabilirlik
-
-🧠 CEVAP FORMATINI AŞAĞIDAKİ GİBİ VER:
-
-Cevap:
-<Net ve anlaşılır cevap>
-
-Gerekçe:
-- Doküman Adı 1:
-  • Kısa açıklama
-- Doküman Adı 2:
-  • Kısa açıklama
-(...)
-
-Sonuç:
-<Genel değerlendirme>
-
-⚠️ Kurallar:
-- Dokümanlarda olmayan bilgiye dayalı çıkarım yapma
-- Belirsiz durumlarda bunu açıkça belirt
-- Gerekirse "Bu değerlendirme öznel kriterlere dayanmaktadır" uyarısı ekle
+ÖNEMLİ KURALLAR:
+1. Sadece soruya doğrudan ilgili dokümanları kullan, gereksiz dokümanlardan bahsetme
+2. Cevabın maksimum 4 paragraf olmalı - aşırı uzun cevaplar verme
+3. Soruya doğrudan ve net cevap ver, gereksiz detaylara girme
+4. Tüm dokümanları listelemek zorunda değilsin - sadece soruyla ilgili olanları kullan
+5. Markdown formatı kullanma (bold, italic vb.), sadece düz metin yaz
+6. Kısa, öz ve anlaşılır cevaplar ver
 
 Kullanıcının Sorusu: "${question}"
 
 Dokümanlar:
 ${combinedText}
 
-Şimdi yukarıdaki kurallara göre soruyu cevapla ve belirtilen formatta çıktı ver.`
+Şimdi yukarıdaki kurallara göre soruya doğrudan, kısa ve öz bir cevap ver (maksimum 4 paragraf). Gereksiz uzunluk yapma ve sadece soruyla ilgili bilgileri kullan.`
+  • Detaylı açıklama ve spesifik bilgiler
+- Doküman Adı 2:
+  • Detaylı açıklama ve spesifik bilgiler
+(...)
+
+Sonuç:
+<Genel değerlendirme ve özet>
+
+⚠️ Kurallar:
+- Dokümanlarda olmayan bilgiye dayalı çıkarım yapma
+- Belirsiz durumlarda bunu açıkça belirt
+- Gerekirse "Bu değerlendirme öznel kriterlere dayanmaktadır" uyarısı ekle
+- ÖNEMLİ: **bold**, *italic*, __bold__, _italic_ gibi markdown formatları KULLANMA. Sadece düz metin yaz.
+- Yüzeysel analiz yapma, detayları, örnekleri, spesifik bilgileri dikkate al ve cevabına dahil et.
+
+Kullanıcının Sorusu: "${question}"
+
+Dokümanlar:
+${combinedText}
+
+Şimdi yukarıdaki kurallara göre soruyu detaylı, kapsamlı ve anlaşılır bir şekilde cevapla. Markdown formatı kullanma, sadece düz metin yaz.`
     }
 
     console.log('🤖 Gemini API çağrısı yapılıyor...')
     const result = await model.generateContent(prompt)
     const response = await result.response
     const answer = response.text()
+    
+    // Markdown formatları frontend'de HTML'e çevrilecek, burada temizleme yapmıyoruz
     
     console.log('✅ Cevap alındı, uzunluk:', answer.length)
     console.log('📝 Cevap önizleme:', answer.substring(0, 200))
@@ -391,7 +362,7 @@ ${combinedText}
 }
 
 // Generate summary
-export async function generateSummary(text) {
+export async function generateSummary(text, language = 'Turkish') {
   const genAIInstance = getGenAI()
   if (!genAIInstance || !process.env.GEMINI_API_KEY) {
     return {
@@ -403,22 +374,28 @@ export async function generateSummary(text) {
   try {
     const model = genAIInstance.getGenerativeModel({ model: 'gemini-2.5-flash' })
     
+    const languageInstruction = language === 'English' 
+      ? 'Özeti İngilizce olarak oluştur. Tüm çıktılar İngilizce olmalıdır.'
+      : 'Özeti Türkçe olarak oluştur. Tüm çıktılar Türkçe olmalıdır.'
+    
     const prompt = `Sen profesyonel bir doküman özetleme asistanısın. Aşağıdaki dokümanı analiz et ve belirtilen formatta özet oluştur.
 
 KURALLAR:
 1. Kısa özet yaklaşık 150 kelime olmalı, dokümanın ana fikrini içermeli
 2. Detaylı özet yaklaşık 500 kelime olmalı, tüm önemli noktaları kapsamalı
 3. Cümleler tamamlanmış ve anlamlı olmalı, yarım kalan cümleler kullanma
-4. Çıktıyı TAM OLARAK aşağıdaki formatta ver:
+4. ${languageInstruction}
+5. Çıktıyı TAM OLARAK aşağıdaki formatta ver (markdown formatı kullanma, sadece düz metin):
+6. Önemli kelimeleri vurgulamak için **bold** veya *italic* gibi markdown formatları KULLANMA, sadece düz metin yaz
 
 KISA_OZET:
-[150 kelime civarında kısa özet buraya]
+[150 kelime civarında kısa özet buraya - sadece düz metin, markdown yok]
 
 DETAYLI_OZET:
-[500 kelime civarında detaylı özet buraya]
+[500 kelime civarında detaylı özet buraya - sadece düz metin, markdown yok]
 
 Doküman:
-${text.substring(0, 4000)}`
+${text.substring(0, 30000)}`
 
     const result = await model.generateContent(prompt)
     const response = await result.response

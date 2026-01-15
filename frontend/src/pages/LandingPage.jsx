@@ -13,13 +13,19 @@ function LandingPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Tema tercihini uygula
+    // Tema tercihini uygula - Varsayılan: 'light' (Mavi tema)
     const savedTheme = localStorage.getItem('theme') || 'light'
+    // Eğer hiç tema seçilmemişse varsayılan olarak mavi (light) tema kullan
+    if (!localStorage.getItem('theme')) {
+      localStorage.setItem('theme', 'light')
+    }
+    
     if (savedTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark')
     } else if (savedTheme === 'light-green') {
       document.documentElement.setAttribute('data-theme', 'light-green')
     } else {
+      // Varsayılan: Mavi tema (light) - data-theme attribute'u olmadan
       document.documentElement.removeAttribute('data-theme')
     }
 
@@ -119,7 +125,6 @@ function LandingPage() {
             e.preventDefault();
             window.scrollTo({ top: 0, behavior: 'smooth' });
           }}>
-            <Sparkles className="logo-icon" />
             <span>SEMA</span>
           </Link>
           <button 
@@ -190,50 +195,54 @@ function LandingPage() {
         <div className="hero-shape hero-shape-left" />
         <div className="hero-shape hero-shape-right" />
         
-        <div className="hero-content">
-          <div className="hero-badge">
-            <Zap className="hero-badge-icon" />
-            <span>Akıllı Doküman Arama Sistemi</span>
-          </div>
-          
-          <h1 className="hero-title">
-            Verilerinizi <br />
-            <span className="hero-title-gradient">Anlamlı Bilgiye</span> Dönüştürün
-          </h1>
-          
-          <p className="hero-subtitle">
-            Dokümanlarınızı yükleyin, anlamsal arama yapın, sorular sorun ve özetler alın.
-          </p>
-          <div className="hero-buttons">
-            {isAuthenticated ? (
-              <Link to="/dashboard" className="btn btn-primary btn-large">
-                <span>Dashboard'a Git</span>
-                <ArrowRight className="btn-icon" />
-              </Link>
-            ) : (
-              <>
-                <Link 
-                  to={isAuthenticated ? "/dashboard" : "/auth?mode=register"} 
-                  className="btn btn-primary btn-large"
-                >
-                  <span>{isAuthenticated ? "Dashboard'a Git" : "Başlayın"}</span>
+        <div className="hero-inner">
+          <div className="hero-content">
+            <h1 className="hero-title">
+              Verilerinizi <br />
+              <span className="hero-title-gradient">Anlamlı Bilgiye</span> Dönüştürün
+            </h1>
+            
+            <p className="hero-subtitle">
+              Dokümanlarınızı yükleyin, anlamsal arama yapın, sorular sorun ve özetler alın.
+            </p>
+            <div className="hero-buttons">
+              {isAuthenticated ? (
+                <Link to="/dashboard" className="btn btn-primary btn-large">
+                  <span>Dashboard'a Git</span>
                   <ArrowRight className="btn-icon" />
                 </Link>
-                <a 
-                  href="#about" 
-                  className="btn btn-secondary btn-large"
-                  onClick={(e) => {
-                    e.preventDefault()
-                    const element = document.getElementById('about')
-                    if (element) {
-                      element.scrollIntoView({ behavior: 'smooth' })
-                    }
-                  }}
-                >
-                  Daha Fazla Bilgi
-                </a>
-              </>
-            )}
+              ) : (
+                <>
+                  <Link 
+                    to={isAuthenticated ? "/dashboard" : "/auth?mode=register"} 
+                    className="btn btn-primary btn-large"
+                  >
+                    <span>{isAuthenticated ? "Dashboard'a Git" : "Başlayın"}</span>
+                    <ArrowRight className="btn-icon" />
+                  </Link>
+                  <a 
+                    href="#about" 
+                    className="btn btn-secondary btn-large"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      const element = document.getElementById('about')
+                      if (element) {
+                        element.scrollIntoView({ behavior: 'smooth' })
+                      }
+                    }}
+                  >
+                    Daha Fazla Bilgi
+                  </a>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="hero-phone-mockup">
+            <img
+              src="/sema-mobile-preview.png"
+              alt="SEMA mobil doküman soru-cevap önizlemesi"
+            />
           </div>
         </div>
       </section>
@@ -356,8 +365,8 @@ function LandingPage() {
                   <span>SEMA</span>
                 </div>
                 <p className="footer-description">
-                  Semantic Analysis - Akıllı doküman arama ve yönetim sistemi. 
-                  Anlamsal arama ile dokümanlarınızı kolayca yönetin.
+                  Semantic Analysis - Dokümanlarınızı yapay zeka ile analiz edin ve yönetin. 
+                  Anlamsal arama ile dokümanlarınıza hızlıca erişin.
                 </p>
               </div>
             </div>

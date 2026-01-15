@@ -114,3 +114,7 @@ ui-debug.log
 # Uncomment if you want to ignore lock files
 # package-lock.json
 # yarn.lock
+
+# Markdown dokümanları (README hariç) - GitHub'da gizle
+*.md
+!README.md

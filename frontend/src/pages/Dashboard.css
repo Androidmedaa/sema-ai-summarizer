@@ -43,6 +43,18 @@
   gap: 1rem;
 }
 
+/* Nav Logo - Sol Üstte */
+.nav-logo {
+  flex-shrink: 0;
+}
+
+.nav-logo span {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  display: block;
+}
+
 .nav-search {
   flex: 1;
   max-width: 800px;
@@ -79,6 +91,37 @@
 
 .nav-search .search-box input::placeholder {
   color: var(--text-muted);
+}
+
+/* Arama Kutusu - Yazı yazarken ve focus olduğunda highlight */
+.nav-search .search-box.search-active,
+.nav-search .search-box:has(input:focus) {
+  border-bottom: 3px solid var(--accent-blue) !important;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transition: all 0.3s ease;
+}
+
+/* Arama Kutusu Highlight Efekti (Buton tıklandığında) */
+.nav-search .search-box.search-highlight {
+  border-bottom: 3px solid var(--accent-blue) !important;
+  animation: searchPulse 1.5s ease-in-out;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  transition: all 0.3s ease;
+}
+
+@keyframes searchPulse {
+  0% {
+    border-bottom-color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    border-bottom-color: var(--accent-blue);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.7);
+  }
+  100% {
+    border-bottom-color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+  }
 }
 
 .nav-right {
@@ -315,6 +358,20 @@
   display: flex;
   flex-direction: column;
   gap: 2rem;
+}
+
+/* Sidebar Logo - Sol Üstte */
+.sidebar-logo {
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 1rem;
+}
+
+.sidebar-logo span {
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  display: block;
 }
 
 .nav-menu-left {
@@ -821,6 +878,36 @@ section h2 {
 .answer-box h3 {
   color: var(--accent-blue);
   margin-bottom: 1rem;
+}
+
+.answer-content {
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.5rem;
+  color: var(--text-primary);
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Custom scrollbar for answer content */
+.answer-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.answer-content::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 4px;
+}
+
+.answer-content::-webkit-scrollbar-thumb {
+  background: var(--accent-blue);
+  border-radius: 4px;
+}
+
+.answer-content::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-blue-dark);
 }
 
 .answer-box p {
@@ -1468,31 +1555,61 @@ section h2 {
 
 /* Drag and Drop Styles */
 .document-card.dragging {
-  opacity: 0.5;
-  cursor: grabbing;
+  opacity: 0.4;
+  cursor: grabbing !important;
+  transform: scale(0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  pointer-events: none;
 }
 
 .document-card {
   cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .document-card:active {
   cursor: grabbing;
 }
 
+.document-card[draggable="true"]:hover {
+  cursor: grab;
+}
+
+.folder-card {
+  transition: all 0.2s ease;
+}
+
 .folder-card.drag-over {
-  background: var(--accent-blue);
-  border-color: var(--accent-blue);
-  transform: scale(1.05);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+  background: var(--accent-blue) !important;
+  border-color: var(--accent-blue) !important;
+  transform: scale(1.08);
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.6);
+  animation: folderPulse 1s ease-in-out infinite;
+  z-index: 100;
+}
+
+@keyframes folderPulse {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(59, 130, 246, 0.8);
+  }
 }
 
 .folder-card.drag-over .folder-icon {
-  color: white;
+  color: white !important;
+  transform: scale(1.2);
 }
 
 .folder-card.drag-over h3 {
-  color: white;
+  color: white !important;
+}
+
+.folder-card.drag-over .folder-info {
+  color: rgba(255, 255, 255, 0.9) !important;
 }
 
 .document-card {
@@ -3074,6 +3191,9 @@ section h2 {
   padding: 1.5rem;
   border-radius: 12px;
   border: 1px solid var(--border-color);
+  min-height: 0;
+  overflow: hidden;
+  height: 100%;
 }
 
 .summarize-input-panel h3,
@@ -3105,6 +3225,7 @@ section h2 {
 }
 
 .summarize-output {
+  flex: 1 1 auto;
   min-height: 400px;
   padding: 1rem;
   border: 1px solid var(--border-color);
@@ -3114,11 +3235,95 @@ section h2 {
   font-size: 1rem;
   line-height: 1.8;
   overflow-y: auto;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.summarize-output::-webkit-scrollbar {
+  width: 8px;
+}
+
+.summarize-output::-webkit-scrollbar-track {
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+}
+
+.summarize-output::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 4px;
+}
+
+.summarize-output::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 .summary-result {
   white-space: pre-wrap;
   word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  min-height: fit-content;
+}
+
+.summary-result p {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  width: 100%;
+  max-width: 100%;
+  overflow: visible;
+  min-height: fit-content;
+}
+
+/* Markdown stilleri */
+.summary-result p strong,
+.document-answer p strong,
+.answer-content strong {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.summary-result p em,
+.document-answer p em,
+.answer-content em {
+  font-style: italic;
+}
+
+.summary-result p code,
+.document-answer p code,
+.answer-content code {
+  background: var(--bg-tertiary);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.summary-result p del,
+.document-answer p del,
+.answer-content del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.summary-result p a,
+.document-answer p a,
+.answer-content a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+
+.summary-result p a:hover,
+.document-answer p a:hover,
+.answer-content a:hover {
+  color: var(--accent-blue-dark);
 }
 
 .output-placeholder {

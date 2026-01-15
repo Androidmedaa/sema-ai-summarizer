@@ -5,6 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import nodemailer from 'nodemailer'
+import { validateLoginInput, validateEmail, validatePassword } from '../utils/validators.js'
 // Firebase Admin SDK isteğe bağlı - şimdilik kullanmıyoruz
 // import firebaseAdmin from '../firebase-admin.js'
 const firebaseAdmin = null
@@ -25,7 +26,12 @@ if (!fs.existsSync(usersFile)) {
   fs.writeFileSync(usersFile, JSON.stringify([]))
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production'
+// JWT_SECRET kontrolü - Production'da zorunlu
+const isProduction = process.env.NODE_ENV === 'production'
+const JWT_SECRET = process.env.JWT_SECRET || (isProduction ? (() => {
+  console.error('❌ PRODUCTION HATASI: JWT_SECRET environment variable zorunludur!')
+  process.exit(1)
+})() : 'your-secret-key-change-in-production')
 
 // E-posta gönderme fonksiyonu
 const sendLoginNotificationEmail = async (userEmail, userName, ipAddress = 'Bilinmiyor') => {
@@ -147,25 +153,48 @@ router.post('/register', async (req, res) => {
   try {
     const { name, email, password } = req.body
 
+    // Tüm alanların varlığını kontrol et
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Tüm alanlar gereklidir' })
     }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Şifre en az 6 karakter olmalıdır' })
+    // Name kontrolü
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ message: 'İsim boş olamaz' })
+    }
+
+    if (name.trim().length < 2) {
+      return res.status(400).json({ message: 'İsim en az 2 karakter olmalıdır' })
+    }
+
+    if (name.trim().length > 100) {
+      return res.status(400).json({ message: 'İsim çok uzun (maksimum 100 karakter)' })
+    }
+
+    // Email format kontrolü
+    const emailValidation = validateEmail(email)
+    if (!emailValidation.valid) {
+      return res.status(400).json({ message: emailValidation.error })
+    }
+
+    // Şifre format kontrolü
+    const passwordValidation = validatePassword(password)
+    if (!passwordValidation.valid) {
+      return res.status(400).json({ message: passwordValidation.error })
     }
 
     const users = readUsers()
     
-    if (users.find(u => u.email === email)) {
+    // Email'in zaten kullanılıp kullanılmadığını kontrol et (case-insensitive)
+    if (users.find(u => u.email.toLowerCase() === emailValidation.email)) {
       return res.status(400).json({ message: 'Bu e-posta adresi zaten kullanılıyor' })
     }
 
     const hashedPassword = await bcrypt.hash(password, 10)
     const newUser = {
       id: Date.now().toString(),
-      name,
-      email,
+      name: name.trim(),
+      email: emailValidation.email, // Validated ve normalized email
       password: hashedPassword,
       createdAt: new Date().toISOString()
     }
@@ -198,12 +227,21 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'E-posta ve şifre gereklidir' })
+    // Email ve şifre format kontrolü
+    const validation = validateLoginInput(email, password)
+    if (!validation.valid) {
+      return res.status(400).json({ 
+        message: 'Giriş bilgileri geçersiz',
+        errors: validation.errors
+      })
     }
 
+    // Validated email'i kullan (trimmed ve lowercase)
+    const validatedEmail = validation.email
+
     const users = readUsers()
-    const user = users.find(u => u.email === email)
+    // Email'i case-insensitive kontrol et
+    const user = users.find(u => u.email.toLowerCase() === validatedEmail)
 
     if (!user) {
       return res.status(401).json({ message: 'Geçersiz e-posta veya şifre' })

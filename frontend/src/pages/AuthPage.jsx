@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Sparkles, Mail, Lock, User, CheckCircle2 } from 'lucide-react'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import { Sparkles, Mail, Lock, User, CheckCircle2, ArrowLeft } from 'lucide-react'
 import { registerUser, loginUser } from '../firebase/auth'
 import './AuthPage.css'
 
@@ -66,8 +66,8 @@ function AuthPage({ setIsAuthenticated }) {
         localStorage.setItem('token', result.token)
         localStorage.setItem('user', JSON.stringify(result.user))
         setIsAuthenticated(true)
-        // Sayfayı yenile veya dashboard'a yönlendir
-        window.location.href = '/dashboard'
+        // Ana sayfaya yönlendir
+        navigate('/')
       } else {
         setError('Giriş başarısız. Lütfen tekrar deneyin.')
       }
@@ -80,7 +80,16 @@ function AuthPage({ setIsAuthenticated }) {
 
   return (
     <div className="auth-page">
-      <div className={`auth-container ${isLogin ? 'login' : 'register'}`}>
+      {/* Geri Butonu */}
+      <div className="auth-back-button">
+        <Link to="/" className="back-btn">
+          <ArrowLeft size={20} />
+          <span>Ana Sayfaya Dön</span>
+        </Link>
+      </div>
+
+      <div className="auth-page-content">
+        <div className={`auth-container ${isLogin ? 'login' : 'register'}`}>
         {/* Left Side - Image/Visual */}
         <div className="auth-visual">
           <div className="visual-content">
@@ -199,6 +208,7 @@ function AuthPage({ setIsAuthenticated }) {
             </form>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

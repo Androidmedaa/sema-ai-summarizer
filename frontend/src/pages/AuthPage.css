@@ -1,9 +1,150 @@
 .auth-page {
   min-height: 100vh;
   display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  padding-top: 0;
+}
+
+/* Navigation Header */
+.auth-page .navbar {
+  padding: 1.5rem 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  backdrop-filter: blur(0px);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  transition: all 0.3s ease;
+}
+
+.auth-page .navbar-scrolled {
+  background: var(--bg-secondary);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 1rem 0;
+}
+
+.auth-page .nav-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+}
+
+.auth-page .logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.9rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.3s;
+}
+
+.auth-page .logo:hover {
+  opacity: 0.8;
+}
+
+.auth-page .mobile-menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 0.5rem;
+  z-index: 101;
+}
+
+.auth-page .mobile-menu-toggle svg {
+  width: 24px;
+  height: 24px;
+}
+
+.auth-page .nav-menu {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.auth-page .nav-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: color 0.3s;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+}
+
+.auth-page .nav-link:hover {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.auth-page .btn-back {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--accent-blue);
+  color: white;
+  padding: 0.5rem 1.5rem;
+  border-radius: 8px;
+}
+
+.auth-page .btn-back:hover {
+  background: var(--accent-blue-dark);
+  color: white;
+}
+
+.auth-page .nav-links {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.auth-page .mobile-menu-container {
+  display: contents;
+}
+
+/* Geri Butonu */
+.auth-back-button {
+  max-width: 1200px;
+  margin: 1rem auto 0;
+  padding: 0 2rem;
+  width: 100%;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  transition: all 0.3s;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.back-btn:hover {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.1);
+  border-color: var(--accent-blue);
+}
+
+.auth-page-content {
+  flex: 1;
+  display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-primary);
   padding: 2rem;
 }
 
@@ -315,6 +456,83 @@
 
   .visual-content > p {
     font-size: 1rem;
+  }
+
+  /* Mobile menu için */
+  .auth-page .mobile-menu-toggle {
+    display: block;
+  }
+
+  .auth-page .nav-container > .nav-menu,
+  .auth-page .nav-container > .nav-links {
+    display: none;
+  }
+
+  .auth-page .mobile-menu-container {
+    display: none;
+    position: fixed;
+    top: 0;
+    right: -280px;
+    width: 280px;
+    height: 100vh;
+    background: var(--bg-secondary);
+    flex-direction: column;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+    transition: right 0.3s ease-in-out;
+    z-index: 100;
+    overflow-y: auto;
+  }
+
+  .auth-page .mobile-menu-container.mobile-menu-open {
+    display: flex !important;
+    right: 0;
+  }
+
+  .auth-page .mobile-menu-container .nav-menu {
+    display: flex !important;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 5rem 2rem 1rem;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .auth-page .mobile-menu-container .nav-menu .nav-link {
+    width: 100%;
+    padding: 1rem;
+    text-align: left;
+  }
+
+  .auth-page .mobile-menu-container .nav-links {
+    display: flex !important;
+    flex-direction: column;
+    padding: 1rem 2rem 2rem;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .auth-back-button {
+    padding: 0 1rem;
+  }
+}
+
+.mobile-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
