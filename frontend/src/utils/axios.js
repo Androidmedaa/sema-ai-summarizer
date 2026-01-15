@@ -1,8 +1,13 @@
 import axios from 'axios'
 
+// Backend API URL - Environment variable'dan al, yoksa development için proxy kullan
+// Production'da Vercel'de environment variable olarak VITE_API_URL ayarlanmalı
+// Örnek: https://your-backend-app.vercel.app/api
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+
 // Axios instance oluştur
 const api = axios.create({
-  baseURL: '/api', // Vite proxy kullanıyor
+  baseURL: API_BASE_URL,
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json'
