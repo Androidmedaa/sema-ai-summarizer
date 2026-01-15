@@ -115,11 +115,11 @@ function Dashboard({ setIsAuthenticated }) {
   const [loadingFolderSummary, setLoadingFolderSummary] = useState(false) // Klasör özeti yükleniyor mu
   const [showFolderSummary, setShowFolderSummary] = useState(true) // Klasör özeti göster/gizle
   const [theme, setTheme] = useState(() => {
-    // localStorage'dan tema tercihini yükle, varsayılan: 'light' (Mavi tema)
-    const savedTheme = localStorage.getItem('theme') || 'light'
-    // Eğer hiç tema seçilmemişse varsayılan olarak mavi (light) tema kullan
+    // localStorage'dan tema tercihini yükle, varsayılan: 'dark' (Koyu tema)
+    const savedTheme = localStorage.getItem('theme') || 'dark'
+    // Eğer hiç tema seçilmemişse varsayılan olarak koyu (dark) tema kullan
     if (!localStorage.getItem('theme')) {
-      localStorage.setItem('theme', 'light')
+      localStorage.setItem('theme', 'dark')
     }
     return savedTheme
   })
@@ -412,8 +412,21 @@ function Dashboard({ setIsAuthenticated }) {
       if (response.data && response.data.theme) {
         // Gemini'den gelen tema renklerini uygula
         const themeColors = response.data.theme
+        const usedGemini = response.data.usedGemini || false
         
         console.log('Tema renkleri:', themeColors) // Debug için
+        console.log('Gemini kullanıldı mı?', usedGemini)
+        
+        // Tüm gerekli renklerin var olduğunu kontrol et
+        const requiredColors = ['bgPrimary', 'bgSecondary', 'bgTertiary', 'accentBlue', 
+                                'accentBlueLight', 'accentBlueDark', 'accentPurple', 
+                                'textPrimary', 'textSecondary', 'textMuted', 'borderColor']
+        const missingColors = requiredColors.filter(color => !themeColors[color])
+        
+        if (missingColors.length > 0) {
+          console.error('❌ Eksik renkler:', missingColors)
+          throw new Error(`Tema oluşturulurken bazı renkler eksik: ${missingColors.join(', ')}`)
+        }
         
         // CSS değişkenlerini dinamik olarak güncelle
         const root = document.documentElement
@@ -469,12 +482,34 @@ function Dashboard({ setIsAuthenticated }) {
         
         // State güncellemesi için kısa bir gecikme
         setTimeout(() => {
-          alert('Özel tema başarıyla oluşturuldu!')
+          if (usedGemini) {
+            alert('✅ Özel tema Gemini AI ile başarıyla oluşturuldu!')
+          } else {
+            alert('⚠️ Özel tema oluşturuldu (Gemini AI kullanılamadı, basit renk hesaplama kullanıldı)')
+          }
         }, 200)
       }
     } catch (err) {
-      console.error('Özel tema oluşturma hatası:', err)
-      alert('Özel tema oluşturulurken hata oluştu: ' + (err.response?.data?.message || err.message))
+      console.error('❌ Özel tema oluşturma hatası:', err)
+      console.error('Hata detayları:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status
+      })
+      
+      let errorMessage = 'Özel tema oluşturulurken hata oluştu'
+      if (err.response?.data?.message) {
+        errorMessage += ': ' + err.response.data.message
+      } else if (err.message) {
+        errorMessage += ': ' + err.message
+      }
+      
+      // Backend bağlantı hatası kontrolü
+      if (err.code === 'ECONNREFUSED' || err.message?.includes('ECONNREFUSED')) {
+        errorMessage += '\n\nBackend sunucusu çalışmıyor! Lütfen backend\'i başlatın.'
+      }
+      
+      alert(errorMessage)
     } finally {
       setGeneratingCustomTheme(false)
     }
@@ -482,10 +517,14 @@ function Dashboard({ setIsAuthenticated }) {
 
   // Sayfa yüklendiğinde tema tercihini uygula
   useEffect(() => {
+    // Tema state'ini DOM'a uygula
     if (theme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark')
     } else if (theme === 'light-green') {
       document.documentElement.setAttribute('data-theme', 'light-green')
+    } else if (theme === 'light') {
+      // Açık tema (mavi) - data-theme attribute'u olmadan
+      document.documentElement.removeAttribute('data-theme')
     } else if (theme === 'custom') {
       document.documentElement.setAttribute('data-theme', 'custom')
       // Özel tema renklerini yükle
@@ -1966,7 +2005,7 @@ function Dashboard({ setIsAuthenticated }) {
                           {theme === 'custom' && (
                             <button
                               onClick={() => {
-                                changeTheme('light')
+                                changeTheme('dark')
                                 setShowColorPicker(false)
                               }}
                               className="reset-theme-btn"

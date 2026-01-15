@@ -13,11 +13,11 @@ function LandingPage() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    // Tema tercihini uygula - Varsayılan: 'light' (Mavi tema)
-    const savedTheme = localStorage.getItem('theme') || 'light'
-    // Eğer hiç tema seçilmemişse varsayılan olarak mavi (light) tema kullan
+    // Tema tercihini uygula - Varsayılan: 'dark' (Koyu tema)
+    const savedTheme = localStorage.getItem('theme') || 'dark'
+    // Eğer hiç tema seçilmemişse varsayılan olarak koyu (dark) tema kullan
     if (!localStorage.getItem('theme')) {
-      localStorage.setItem('theme', 'light')
+      localStorage.setItem('theme', 'dark')
     }
     
     if (savedTheme === 'dark') {

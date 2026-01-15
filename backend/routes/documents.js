@@ -487,9 +487,11 @@ router.post('/generate-theme', verifyToken, async (req, res) => {
     // Gemini AI ile tema renkleri oluştur
     const genAIInstance = getGenAI()
     let themeColors = {}
+    let usedGemini = false
 
     if (genAIInstance && process.env.GEMINI_API_KEY) {
       try {
+        console.log('🎨 Gemini ile tema oluşturuluyor...')
         const model = genAIInstance.getGenerativeModel({ model: 'gemini-2.5-flash' })
         
         // Renk parlaklığını hesapla (0-255 arası, 0 = siyah, 255 = beyaz)
@@ -542,32 +544,54 @@ Sadece JSON objesini döndür, başka açıklama yapma.`
         const response = await result.response
         const responseText = response.text().trim()
         
+        console.log('📝 Gemini yanıtı:', responseText.substring(0, 200))
+        
         // JSON'u parse et
         try {
           // JSON bloğunu bul (```json ... ``` veya sadece { ... })
           const jsonMatch = responseText.match(/\{[\s\S]*\}/)
           if (jsonMatch) {
             themeColors = JSON.parse(jsonMatch[0])
+            usedGemini = true
+            console.log('✅ Gemini ile tema başarıyla oluşturuldu')
           } else {
-            throw new Error('JSON bulunamadı')
+            throw new Error('JSON bulunamadı - Gemini yanıtı: ' + responseText.substring(0, 100))
           }
         } catch (parseError) {
-          console.error('JSON parse error:', parseError)
+          console.error('❌ JSON parse error:', parseError)
+          console.error('Gemini yanıtı:', responseText)
           // Fallback: Basit renk hesaplama
+          console.warn('⚠️ Fallback tema kullanılıyor (JSON parse hatası)')
           themeColors = generateThemeFromColor(color, rgb)
         }
       } catch (aiError) {
-        console.error('Gemini theme generation error:', aiError)
+        console.error('❌ Gemini theme generation error:', aiError)
+        console.error('Error details:', {
+          message: aiError.message,
+          code: aiError.code,
+          stack: aiError.stack
+        })
         // Fallback: Basit renk hesaplama
+        console.warn('⚠️ Fallback tema kullanılıyor (Gemini hatası)')
         themeColors = generateThemeFromColor(color, rgb)
       }
     } else {
       // Fallback: Basit renk hesaplama
+      if (!process.env.GEMINI_API_KEY) {
+        console.warn('⚠️ GEMINI_API_KEY bulunamadı, fallback tema kullanılıyor')
+      } else if (!genAIInstance) {
+        console.warn('⚠️ Gemini AI instance oluşturulamadı, fallback tema kullanılıyor')
+      }
       themeColors = generateThemeFromColor(color, rgb)
     }
 
-    console.log('Generated theme colors:', themeColors) // Debug için
-    res.json({ theme: themeColors })
+    console.log('🎨 Oluşturulan tema renkleri:', themeColors)
+    console.log('📊 Gemini kullanıldı mı?', usedGemini)
+    
+    res.json({ 
+      theme: themeColors,
+      usedGemini: usedGemini // Frontend'e bilgi ver
+    })
   } catch (error) {
     console.error('Generate theme error:', error)
     res.status(500).json({ message: 'Tema oluşturulurken hata oluştu' })

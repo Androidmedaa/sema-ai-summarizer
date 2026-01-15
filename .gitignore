@@ -115,6 +115,7 @@ ui-debug.log
 # package-lock.json
 # yarn.lock
 
-# Markdown dokümanları (README hariç) - GitHub'da gizle
+# Markdown dokümanları (README ve deployment rehberi hariç) - GitHub'da gizle
 *.md
 !README.md
+!VERCEL_DEPLOYMENT.md
